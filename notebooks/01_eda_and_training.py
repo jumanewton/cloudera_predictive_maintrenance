@@ -49,24 +49,41 @@ else:
 
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
+import argparse
+
+# ─── Command Line Arguments for Model Versioning ────────────────────
+parser = argparse.ArgumentParser(description="Predictive Maintenance ML Training & Versioning")
+parser.add_argument("--version-tag", type=str, default="v2", help="Version tag (e.g. v2, v3, prod-candidate)")
+parser.add_argument("--file",        type=str, default="FD001", help="Dataset (FD001, FD002, FD003, FD004)")
+parser.add_argument("--n-estimators", type=int, default=300, help="Number of trees in Random Forest")
+parser.add_argument("--max-depth",    type=int, default=15, help="Max depth of trees")
+parser.add_argument("--window",       type=int, default=10, help="Rolling feature window in cycles")
+args, _ = parser.parse_known_args()
+
+VERSION_TAG  = args.version_tag
+DATASET_NAME = args.file
+N_ESTIMATORS = args.n_estimators
+MAX_DEPTH    = args.max_depth
+ROLL_WINDOW  = args.window
+
 # ─── Column names ───────────────────────────────────────────────────
 SENSOR_COLS = [f"s{i}" for i in range(1, 22)]
 OP_COLS     = ["op1", "op2", "op3"]
 ALL_COLS    = ["unit_id", "time_cycle"] + OP_COLS + SENSOR_COLS
 
 # ─── 1. Load data ───────────────────────────────────────────────────
-print("Loading CMAPSS FD001...")
-train = pd.read_csv(DATA_DIR / "train_FD001.txt", sep=r"\s+",
+print(f"Loading CMAPSS {DATASET_NAME}...")
+train = pd.read_csv(DATA_DIR / f"train_{DATASET_NAME}.txt", sep=r"\s+",
                     header=None, engine="python")
 train = train.dropna(axis=1, how="all")
 train.columns = ALL_COLS[:len(train.columns)]
 
-test  = pd.read_csv(DATA_DIR / "test_FD001.txt",  sep=r"\s+",
+test  = pd.read_csv(DATA_DIR / f"test_{DATASET_NAME}.txt",  sep=r"\s+",
                     header=None, engine="python")
 test  = test.dropna(axis=1, how="all")
 test.columns = ALL_COLS[:len(test.columns)]
 
-rul_test = pd.read_csv(DATA_DIR / "RUL_FD001.txt", header=None, names=["RUL"])
+rul_test = pd.read_csv(DATA_DIR / f"RUL_{DATASET_NAME}.txt", header=None, names=["RUL"])
 
 print(f"Train shape: {train.shape}  |  Test shape: {test.shape}")
 print(train.head(3))
@@ -151,9 +168,9 @@ with mlflow.start_run(run_name="IsolationForest-v1"):
     print(f"  Isolation Forest artifact logged to MLflow!")
 
 # ─── 8. Train Random Forest for RUL prediction ──────────────────────
-print("\nTraining Random Forest RUL predictor...")
-with mlflow.start_run(run_name="RandomForest-RUL-v1"):
-    rf = RandomForestRegressor(n_estimators=300, max_depth=15,
+print(f"\nTraining Random Forest RUL predictor [Version: {VERSION_TAG}]...")
+with mlflow.start_run(run_name=f"RandomForest-RUL-{VERSION_TAG}"):
+    rf = RandomForestRegressor(n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH,
                                 min_samples_leaf=5, random_state=42, n_jobs=-1)
     rf.fit(X_train, y_train)
 
@@ -162,8 +179,9 @@ with mlflow.start_run(run_name="RandomForest-RUL-v1"):
     rmse = np.sqrt(mean_squared_error(y_val, val_preds))
 
     mlflow.log_params({
-        "n_estimators":    300,
-        "max_depth":       15,
+        "version":         VERSION_TAG,
+        "n_estimators":    N_ESTIMATORS,
+        "max_depth":       MAX_DEPTH,
         "min_samples_leaf":5,
         "window":          ROLL_WINDOW,
     })

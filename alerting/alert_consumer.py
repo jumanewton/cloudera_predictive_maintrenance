@@ -7,7 +7,23 @@ Runs on the Windows HOST.  Ctrl+C to stop.
 """
 import json
 import sys
+import selectors
 from datetime import datetime, timezone
+
+# Windows Python 3.13 patch for closed sockets with fileno == -1
+def _patch_selectors():
+    orig_unregister = selectors.SelectSelector.unregister
+    def safe_unregister(self, fileobj):
+        try:
+            return orig_unregister(self, fileobj)
+        except (ValueError, KeyError):
+            for fd, key in list(self._fd_to_key.items()):
+                if key.fileobj is fileobj:
+                    return self._fd_to_key.pop(fd, None)
+            return None
+    selectors.SelectSelector.unregister = safe_unregister
+
+_patch_selectors()
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
