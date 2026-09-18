@@ -80,24 +80,24 @@ def process_metric(msg: dict, write_api) -> None:
         "avg_temp":        msg.get("avg_temp"),
         "avg_pressure":    msg.get("avg_pressure"),
         "avg_fan_speed":   msg.get("avg_fan_speed"),
-        "std_fan_speed":   msg.get("std_fan_speed"),
-        "max_fuel_flow":   msg.get("max_fuel_flow"),
-        "avg_exhaust_temp":msg.get("avg_exhaust_temp"),
+        "predicted_rul":   msg.get("predicted_rul"),
+        "anomaly_score":   msg.get("anomaly_score"),
         "n_readings":      float(msg.get("n_readings", 0)),
     }
     # Drop None values
-    fields = {k: v for k, v in fields.items() if v is not None}
+    fields = {k: float(v) for k, v in fields.items() if v is not None}
 
     point = (Point("sensor_metrics")
              .tag("unit_id", unit_id)
              .time(ts, WritePrecision.NS))
     for field, val in fields.items():
-        point = point.field(field, float(val))
+        point = point.field(field, val)
 
     write_api.write(bucket=INFLUX_BUCKET, record=point)
+    rul_str = f"rul={fields['predicted_rul']:.1f}" if "predicted_rul" in fields else ""
     print(f"  Metrics unit={unit_id:>3}  "
           f"avg_temp={fields.get('avg_temp', 0):.2f}  "
-          f"avg_fan_speed={fields.get('avg_fan_speed', 0):.2f}")
+          f"{rul_str}")
 
 if __name__ == "__main__":
     consumer  = connect_kafka()

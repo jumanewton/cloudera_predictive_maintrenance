@@ -77,32 +77,37 @@ def print_alert(alert: dict) -> None:
     temp = alert.get("temp", 0)
     fan  = alert.get("fan_speed", 0)
     fuel = alert.get("fuel_flow", 0)
-    reasons = alert.get("alert_reasons", [])
+    rul = alert.get("predicted_rul", -1)
+    anom = alert.get("anomaly_score", 0.0)
 
     print(f"\n{DIVIDER}")
-    print(f"  🚨  MACHINE ALERT  —  {now}")
+    print(f"  🚨  PREDICTIVE MACHINE ALERT  —  {now}")
     print(DIVIDER)
-    print(f"  Unit ID      : {unit}")
-    print(f"  Cycle        : {cycle}")
-    print(f"  Temperature  : {temp:.2f}  (threshold 645.0 R)")
-    print(f"  Fan Speed    : {fan:.2f}   (threshold 9400 RPM)")
-    print(f"  Fuel Flow    : {fuel:.2f}  (threshold 550.0)")
+    print(f"  Machine Unit   : {unit}")
+    print(f"  Current Cycle  : {cycle}")
+    if rul != -1:
+        print(f"  PREDICTED RUL  : {rul:.1f} cycles remaining before failure! ⏳")
+    print(f"  Anomaly Score  : {anom:.4f}")
+    print(f"  Temperature    : {temp:.2f} R")
+    print(f"  Fan Speed      : {fan:.2f} RPM")
     if reasons:
-        print(f"  Reasons      :")
+        print(f"  Triggered Signals :")
         for r in reasons:
-            print(f"    • {r}")
+            print(f"    ⚠️  {r}")
     print(DIVIDER)
 
 def write_influx(alert: dict, write_api) -> None:
     if write_api is None:
         return
     try:
+        rul = float(alert.get("predicted_rul", -1))
         point = (Point("machine_alert")
                  .tag("unit_id", str(alert.get("unit_id", "?")))
-                 .field("temp",       float(alert.get("temp",       0)))
-                 .field("fan_speed",  float(alert.get("fan_speed",  0)))
-                 .field("fuel_flow",  float(alert.get("fuel_flow",  0)))
-                 .field("alert_flag", 1)
+                 .field("temp",          float(alert.get("temp",       0)))
+                 .field("fan_speed",     float(alert.get("fan_speed",  0)))
+                 .field("fuel_flow",     float(alert.get("fuel_flow",  0)))
+                 .field("predicted_rul", rul)
+                 .field("alert_flag",    1)
                  .time(datetime.now(timezone.utc), WritePrecision.NS))
         write_api.write(bucket=INFLUX_BUCKET, record=point)
     except Exception as e:
