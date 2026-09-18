@@ -1,0 +1,135 @@
+﻿version: '3.8'
+
+# =====================================================================
+#  Predictive Maintenance — Host-Side Services (Docker)
+#
+#  Services included:
+#    - Kafka + Zookeeper (Message Broker)
+#    - Kafka-UI (Web GUI to inspect topics & messages on :8080)
+#    - InfluxDB (Time-series database on :8086)
+#    - Grafana (Real-time dashboard on :3000)
+#    - MLflow (Model registry on :5000)
+#    - JupyterLab (EDA & training on :8889)
+#
+#  Start: docker compose up -d
+#  Stop:  docker compose down
+# =====================================================================
+
+services:
+
+  # ─── Zookeeper ───────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: predmaint-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    restart: unless-stopped
+
+  # ─── Kafka Broker ────────────────────────────────────────
+  # Configured with multi-listeners:
+  #   - localhost:9092 for Windows host apps
+  #   - 10.0.2.2:9094  for Spark jobs inside VirtualBox VM
+  #   - kafka:29092    for internal Docker apps (Kafka UI)
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: predmaint-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,LOCAL:PLAINTEXT,VM:PLAINTEXT
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,LOCAL://0.0.0.0:9092,VM://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,LOCAL://localhost:9092,VM://10.0.2.2:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    restart: unless-stopped
+
+  # ─── Kafka UI (Web dashboard at http://localhost:8080) ────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: predmaint-kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    depends_on:
+      - kafka
+    restart: unless-stopped
+
+  # ─── InfluxDB 2.x ────────────────────────────────────────
+  influxdb:
+    image: influxdb:2.7
+    container_name: predmaint-influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: adminpassword
+      DOCKER_INFLUXDB_INIT_ORG: predmaint
+      DOCKER_INFLUXDB_INIT_BUCKET: sensor-data
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: predmaint-super-token
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    restart: unless-stopped
+
+  # ─── Grafana Dashboard (http://localhost:3000) ───────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: predmaint-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    depends_on:
+      - influxdb
+    volumes:
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+
+  # ─── MLflow (http://localhost:5000) ──────────────────────
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.13.0
+    container_name: predmaint-mlflow
+    ports:
+      - "5000:5000"
+    command: >
+      mlflow server
+        --host 0.0.0.0
+        --port 5000
+        --backend-store-uri sqlite:////mlruns/mlflow.db
+        --default-artifact-root /mlruns/artifacts
+    volumes:
+      - mlflow_data:/mlruns
+    restart: unless-stopped
+
+  # ─── JupyterLab (http://localhost:8889, token: predmaint) ─
+  jupyter:
+    image: jupyter/scipy-notebook:python-3.11
+    container_name: predmaint-jupyter
+    ports:
+      - "8889:8888"
+    environment:
+      JUPYTER_ENABLE_LAB: "yes"
+      JUPYTER_TOKEN: "predmaint"
+    volumes:
+      - ./notebooks:/home/jovyan/work
+      - ./data:/home/jovyan/data
+      - ./models:/home/jovyan/models
+    restart: unless-stopped
+
+volumes:
+  influxdb_data:
+  grafana_data:
+  mlflow_data:

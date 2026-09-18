@@ -1,0 +1,13 @@
+﻿# =====================================================
+#  requirements.txt - Windows Host Python packages
+# =====================================================
+kafka-python-ng
+pandas
+numpy
+scikit-learn
+joblib
+mlflow
+influxdb-client
+requests
+streamlit
+plotly
