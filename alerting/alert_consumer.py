@@ -90,6 +90,7 @@ def print_alert(alert: dict) -> None:
     print(f"  Anomaly Score  : {anom:.4f}")
     print(f"  Temperature    : {temp:.2f} R")
     print(f"  Fan Speed      : {fan:.2f} RPM")
+    reasons = alert.get("alert_reasons", [])
     if reasons:
         print(f"  Triggered Signals :")
         for r in reasons:
